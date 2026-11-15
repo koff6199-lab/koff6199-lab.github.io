@@ -1486,12 +1486,24 @@ body{letter-spacing:0}
 .row>span:not([class]){font-weight:400}
 @media (prefers-reduced-motion:reduce){.nr{transition:none}.nr.pop,.nr.wig,.nr.hop,.hero-nr,#peekNr{animation:none!important}.nr[data-mood=sad]{transform:none!important}}
 
-/* diagnostics panel (hidden; five taps on the about line) */
-.diag{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:9999;max-height:70vh;overflow:auto;
-  background:var(--card);color:var(--ink);border:1px solid var(--sep);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:14px}
-.diag pre{margin:0;white-space:pre-wrap;word-break:break-all;font:12px/1.55 ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}
-.diag-b{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
-.diag-b button{font:inherit;font-size:14px;padding:8px 16px;border-radius:999px;border:1px solid var(--sep);background:transparent;color:var(--ink)}
+
+/* ================= v4.21 — quicker sheets, drawn for 120 Hz =================
+   Sheets open in 0.3 s and close in 0.2 s (were 0.42 / 0.26); the dim and the toast follow. The opening curve is the
+   same spring as before (critically damped, leaving with some speed), sampled at 41 points instead of 21 so that at
+   120 frames each frame still lands on its own piece of the curve. Only transform and opacity move, so the compositor
+   runs them at whatever rate the browser gives the page: Safari needs its 60 fps feature flag off for 120, and WeChat
+   stays at 60. */
+:root{--sheet-in-t:.3s;--sheet-out-t:.2s}
+@supports (transition-timing-function:linear(0,1)){:root{--sheet-in:linear(0,0.0988,0.1934,0.2822,0.3645,0.4398,0.5081,0.5697,0.6246,0.6735,0.7168,0.755,0.7884,0.8177,0.8433,0.8655,0.8848,0.9015,0.916,0.9284,0.9392,0.9484,0.9563,0.9631,0.9689,0.9739,0.9782,0.9818,0.9849,0.9875,0.9898,0.9917,0.9933,0.9947,0.9959,0.9969,0.9977,0.9984,0.9991,0.9996,1)}}
+.layer{transition:visibility 0s linear .24s}
+.layer.open .dim{transition:opacity .24s ease-out}
+@media (min-width:700px){
+  .sheet,.as{transition:transform var(--sheet-out-t) var(--sheet-out),opacity .16s ease}
+  .layer.open .sheet,.layer.open .as{transition:transform var(--sheet-in-t) var(--sheet-in),opacity .22s ease-out}
+}
+.toast{transition:transform .42s var(--sp-bouncy),opacity .18s var(--ease-out)}
+.toast span{transition:opacity .2s var(--ease-out) .05s,transform .34s var(--ease-out) .04s}
+@media (prefers-reduced-motion:reduce){.sheet,.as,.layer.open .sheet,.layer.open .as{transition:opacity .2s ease!important}}
 </style>
 </head>
 <body>
@@ -1623,7 +1635,7 @@ body{letter-spacing:0}
         </div>
         <p class="lbl">外观</p>
         <div class="seg wide" id="themeSeg"><button data-v="auto">跟随系统</button><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
-        <p class="about" id="about">奶茹五子棋 4.20 · 开源（MIT）<br>配乐改编自巴赫、莫扎特、贝多芬、勃拉姆斯、萨蒂、帕赫贝尔、德沃夏克、格里格等人的作品<br>钢琴采样 Salamander Grand Piano（CC BY 3.0）· 字体 思源宋体（SIL OFL）</p>
+        <p class="about" id="about">奶茹五子棋 4.21 · 开源（MIT）<br>配乐改编自巴赫、莫扎特、贝多芬、勃拉姆斯、萨蒂、帕赫贝尔、德沃夏克、格里格等人的作品<br>钢琴采样 Salamander Grand Piano（CC BY 3.0）· 字体 思源宋体（SIL OFL）</p>
       </div>
     </div></div></div>
 
@@ -4978,106 +4990,6 @@ body{letter-spacing:0}
     clearTimeout(tt);
     tt = setTimeout(() => el.classList.remove("show"), ms || 2400);
   }
-  const DIAG = (() => {
-    const log = [], states = [];
-    let cur = null, lastTick = performance.now(), clk = null, lastState = "";
-    setInterval(() => {
-      const now = performance.now(), gap = now - lastTick;
-      lastTick = now;
-      const c = SND.ctx;
-      if (c) {
-        if (c.state !== lastState) {
-          lastState = c.state;
-          states.push((/* @__PURE__ */ new Date()).toTimeString().slice(0, 8) + " " + c.state);
-          if (states.length > 6) states.shift();
-        }
-        if (c.state === "running") {
-          if (clk && cur) {
-            const lag = ((now - clk.w) / 1e3 - (c.currentTime - clk.a)) * 1e3;
-            if (lag > cur.lag) cur.lag = lag;
-          }
-          clk = { w: now, a: c.currentTime };
-        } else clk = null;
-      }
-      if (cur) {
-        if (gap > cur.gap) cur.gap = gap;
-        const l = SND.lead;
-        if (l != null && l < cur.lead) cur.lead = l;
-      }
-    }, 100);
-    const LV = ["拉完了", "NPC", "人上人", "顶级", "夯"];
-    return {
-      start(level, n) {
-        const c = SND.ctx;
-        cur = { n, lv: LV[level] || level, t0: performance.now(), gap: 0, lag: 0, lead: Infinity, where: AIW.mode, w0: performance.now(), a0: c && c.state === "running" ? c.currentTime : null };
-        const me = cur;
-        return { end() {
-          if (me.done) return;
-          me.done = true;
-          const c2 = SND.ctx, w = performance.now();
-          me.ms = w - me.t0;
-          if (me.a0 != null && c2 && c2.state === "running") me.lost = Math.max(0, w - me.w0 - (c2.currentTime - me.a0) * 1e3);
-          log.push(me);
-          if (log.length > 8) log.shift();
-          if (cur === me) cur = null;
-        } };
-      },
-      text() {
-        const c = SND.ctx, f = (x) => Math.round(x);
-        const where = { blob: "后台线程", data: "后台线程（备用）", none: "页面主线程" }[AIW.mode] || AIW.mode;
-        const L = [
-          "奶茹五子棋 4.20 诊断",
-          "奶茹计算：" + where,
-          c ? `声音：${c.sampleRate} Hz · 状态 ${c.state} · 基础延迟 ${f((c.baseLatency || 0) * 1e3)} ms · 输出延迟 ${f((c.outputLatency || 0) * 1e3)} ms` : "声音：还没启动",
-          states.length ? "声音状态变化：" + states.join("，") : "",
-          "最近几步（奶茹）："
-        ];
-        log.slice().reverse().forEach((m) => L.push(`第${m.n}手 ${m.lv} · 用时 ${(m.ms / 1e3).toFixed(1)}s · 页面最长停顿 ${f(Math.max(0, m.gap - 100))}ms · 声音时钟最多落后 ${f(m.lag)}ms` + (m.lost != null ? ` · 合计 ${f(m.lost)}ms` : "") + (isFinite(m.lead) ? ` · 音乐余量 ${m.lead.toFixed(1)}s` : "")));
-        if (!log.length) L.push("（还没有记录，先和奶茹下几步）");
-        L.push(navigator.userAgent);
-        return L.filter(Boolean).join("\n");
-      }
-    };
-  })();
-  (() => {
-    let taps = 0, tt2 = 0;
-    $("#about").addEventListener("click", () => {
-      taps++;
-      clearTimeout(tt2);
-      tt2 = setTimeout(() => {
-        taps = 0;
-      }, 1500);
-      if (taps < 5) return;
-      taps = 0;
-      let el = $("#diag");
-      if (!el) {
-        el = document.createElement("div");
-        el.id = "diag";
-        el.className = "diag";
-        el.innerHTML = '<pre></pre><div class="diag-b"><button type="button" data-a="copy">复制</button><button type="button" data-a="close">关闭</button></div>';
-        document.body.appendChild(el);
-        el.addEventListener("click", (e) => {
-          const b = e.target.closest("button");
-          if (!b) return;
-          if (b.dataset.a === "close") {
-            el.hidden = true;
-            return;
-          }
-          const t = DIAG.text();
-          (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast("已复制"), () => {
-            const r = document.createRange();
-            r.selectNodeContents($("pre", el));
-            const sel = getSelection();
-            sel.removeAllRanges();
-            sel.addRange(r);
-            toast("已选中，长按即可复制");
-          });
-        });
-      }
-      $("pre", el).textContent = DIAG.text();
-      el.hidden = false;
-    });
-  })();
   const layerT = /* @__PURE__ */ new Map();
   let quietT = 0;
   function layerPrep(l, closing) {
@@ -5085,11 +4997,11 @@ body{letter-spacing:0}
     l.classList.add("prep");
     if (closing) layerT.set(l, setTimeout(() => {
       if (!l.classList.contains("open")) l.classList.remove("prep");
-    }, 700));
+    }, 500));
     const h = document.documentElement;
     h.classList.add("waking");
     clearTimeout(quietT);
-    quietT = setTimeout(() => h.classList.remove("waking"), 650);
+    quietT = setTimeout(() => h.classList.remove("waking"), 450);
   }
   function openLayer(id) {
     const l = $("#" + id);
@@ -6042,14 +5954,10 @@ body{letter-spacing:0}
     peek.mood("think", 0);
     if (Math.random() < 0.3) peek.say(pick(["嗯…让我想想", "下哪里好呢", "别催我嘛"]), "think", 1800);
     const minWait = new Promise((r) => setTimeout(r, 520 + Math.random() * 480 + (G.level >= 2 ? 240 : 0)));
-    const dg = DIAG.start(G.level, G.moves.length + 1);
     const longT = G.level >= 3 ? setTimeout(() => {
       if (gen === G.gen && G.thinking && Math.random() < 0.7) peek.say(pick(["这步要好好算算…", "等我一下下", "嗯…有点复杂"]), "think", 2200);
     }, G.level >= 4 ? 3600 : 2600) : 0;
-    Promise.all([AIW.pick(G.board, 3 - G.human, G.level, DYN.get(G.level)).then((i) => {
-      dg.end();
-      return i;
-    }), minWait]).then(([i]) => {
+    Promise.all([AIW.pick(G.board, 3 - G.human, G.level, DYN.get(G.level)), minWait]).then(([i]) => {
       clearTimeout(longT);
       if (gen !== G.gen || G.mode !== "ai" || G.over) return;
       if (!(i >= 0 && i < CELLS) || G.board[i] || FB && turnColor() === 1 && forbidden(G.board, i)) i = aiPick(G.board, 3 - G.human, Math.min(G.level, 1), 0);
@@ -6234,7 +6142,7 @@ body{letter-spacing:0}
     } else SND.lose();
     setTimeout(() => {
       if (gen === G.gen && G.over) showResult(title, sub, mood);
-    }, REDUCE ? 200 : 1200);
+    }, REDUCE ? 200 : 900);
   }
   let resMascot = null;
   function showResult(title, sub, mood) {
@@ -7595,7 +7503,7 @@ body{letter-spacing:0}
     const gen = G.gen;
     setTimeout(() => {
       if (gen === G.gen && G.over && G.mode === "online") showResult(title, sub, mood);
-    }, REDUCE ? 200 : 1200);
+    }, REDUCE ? 200 : 900);
   }
   setInterval(() => {
     if (G.mode === "online" && ON.awaySince) onlineTick();
